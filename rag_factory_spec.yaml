@@ -1,0 +1,231 @@
+# PIPELINE DEFINITION
+# Name: scalable-rag-knowledge-factory
+# Description: A parallel pipeline for processing PDFs into vectors using Qwen and LFM models.
+# Inputs:
+#    batch_list: list [Default: ['batch_1', 'batch_2']]
+#    data_pvc: str [Default: 'rag-data-pvc']
+#    models_pvc: str [Default: 'rag-models-pvc']
+components:
+  comp-embedding-op:
+    executorLabel: exec-embedding-op
+    inputDefinitions:
+      artifacts:
+        input_csv:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+      parameters:
+        model_path:
+          parameterType: STRING
+    outputDefinitions:
+      artifacts:
+        output_csv:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+  comp-evaluation-op:
+    executorLabel: exec-evaluation-op
+    inputDefinitions:
+      artifacts:
+        input_csv:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+      parameters:
+        model_path:
+          parameterType: STRING
+    outputDefinitions:
+      artifacts:
+        output_report:
+          artifactType:
+            schemaTitle: system.Artifact
+            schemaVersion: 0.0.1
+  comp-for-loop-1:
+    dag:
+      tasks:
+        embedding-op:
+          cachingOptions:
+            enableCache: true
+          componentRef:
+            name: comp-embedding-op
+          dependentTasks:
+          - ingestion-op
+          inputs:
+            artifacts:
+              input_csv:
+                taskOutputArtifact:
+                  outputArtifactKey: output_csv
+                  producerTask: ingestion-op
+            parameters:
+              model_path:
+                runtimeValue:
+                  constant: /mnt/models/qwen3-vl-embedding-2b-q4_k_m.gguf
+          taskInfo:
+            name: embedding-op
+        evaluation-op:
+          cachingOptions:
+            enableCache: true
+          componentRef:
+            name: comp-evaluation-op
+          dependentTasks:
+          - ingestion-op
+          inputs:
+            artifacts:
+              input_csv:
+                taskOutputArtifact:
+                  outputArtifactKey: output_csv
+                  producerTask: ingestion-op
+            parameters:
+              model_path:
+                runtimeValue:
+                  constant: /mnt/models/LFM2.5-1.2B-Instruct-Q8_0.gguf
+          taskInfo:
+            name: evaluation-op
+        ingestion-op:
+          cachingOptions:
+            enableCache: true
+          componentRef:
+            name: comp-ingestion-op
+          inputs:
+            parameters:
+              input_dir:
+                runtimeValue:
+                  constant: /mnt/data/{{$.inputs.parameters['pipelinechannel--batch_list-loop-item']}}
+              pipelinechannel--batch_list-loop-item:
+                componentInputParameter: pipelinechannel--batch_list-loop-item
+          taskInfo:
+            name: ingestion-op
+    inputDefinitions:
+      parameters:
+        pipelinechannel--batch_list:
+          parameterType: LIST
+        pipelinechannel--batch_list-loop-item:
+          parameterType: STRING
+  comp-ingestion-op:
+    executorLabel: exec-ingestion-op
+    inputDefinitions:
+      parameters:
+        input_dir:
+          parameterType: STRING
+    outputDefinitions:
+      artifacts:
+        output_csv:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+deploymentSpec:
+  executors:
+    exec-embedding-op:
+      container:
+        args:
+        - --input_csv
+        - '{{$.inputs.artifacts[''input_csv''].path}}'
+        - --output_csv
+        - '{{$.outputs.artifacts[''output_csv''].path}}'
+        - --model_path
+        - '{{$.inputs.parameters[''model_path'']}}'
+        command:
+        - python
+        - main.py
+        image: localhost:5000/rag-embedding:latest
+        resources:
+          cpuRequest: 2.0
+          memoryRequest: 4.294967296
+          resourceCpuRequest: '2'
+          resourceMemoryRequest: 4Gi
+    exec-evaluation-op:
+      container:
+        args:
+        - --input_csv
+        - '{{$.inputs.artifacts[''input_csv''].path}}'
+        - --output_report
+        - '{{$.outputs.artifacts[''output_report''].path}}'
+        - --model_path
+        - '{{$.inputs.parameters[''model_path'']}}'
+        command:
+        - python
+        - main.py
+        image: localhost:5000/rag-evaluation:latest
+        resources:
+          cpuRequest: 1.0
+          memoryRequest: 2.147483648
+          resourceCpuRequest: '1'
+          resourceMemoryRequest: 2Gi
+    exec-ingestion-op:
+      container:
+        args:
+        - --input_dir
+        - '{{$.inputs.parameters[''input_dir'']}}'
+        - --output_file
+        - '{{$.outputs.artifacts[''output_csv''].path}}'
+        command:
+        - python
+        - main.py
+        image: localhost:5000/rag-ingestion:latest
+pipelineInfo:
+  description: A parallel pipeline for processing PDFs into vectors using Qwen and
+    LFM models.
+  name: scalable-rag-knowledge-factory
+root:
+  dag:
+    tasks:
+      for-loop-1:
+        componentRef:
+          name: comp-for-loop-1
+        inputs:
+          parameters:
+            pipelinechannel--batch_list:
+              componentInputParameter: batch_list
+        parameterIterator:
+          itemInput: pipelinechannel--batch_list-loop-item
+          items:
+            inputParameter: pipelinechannel--batch_list
+        taskInfo:
+          name: for-loop-1
+  inputDefinitions:
+    parameters:
+      batch_list:
+        defaultValue:
+        - batch_1
+        - batch_2
+        isOptional: true
+        parameterType: LIST
+      data_pvc:
+        defaultValue: rag-data-pvc
+        isOptional: true
+        parameterType: STRING
+      models_pvc:
+        defaultValue: rag-models-pvc
+        isOptional: true
+        parameterType: STRING
+schemaVersion: 2.1.0
+sdkVersion: kfp-2.16.0
+---
+platforms:
+  kubernetes:
+    deploymentSpec:
+      executors:
+        exec-embedding-op:
+          imagePullPolicy: IfNotPresent
+          pvcMount:
+          - constant: rag-models-pvc
+            mountPath: /mnt/models
+            pvcNameParameter:
+              runtimeValue:
+                constant: rag-models-pvc
+        exec-evaluation-op:
+          imagePullPolicy: IfNotPresent
+          pvcMount:
+          - constant: rag-models-pvc
+            mountPath: /mnt/models
+            pvcNameParameter:
+              runtimeValue:
+                constant: rag-models-pvc
+        exec-ingestion-op:
+          imagePullPolicy: IfNotPresent
+          pvcMount:
+          - constant: rag-data-pvc
+            mountPath: /mnt/data
+            pvcNameParameter:
+              runtimeValue:
+                constant: rag-data-pvc

@@ -1,0 +1,9 @@
+pipeline_metadata:
+  name: "rag-factory-v1"
+  registry: "localhost:32000"
+paths:
+  ubuntu_model_store: "/home/zenteiq/models"
+  ubuntu_pdf_store: "/home/zenteiq/data/pdfs"
+models:
+  embedding: "qwen3-vl-embedding-2b-q4_k_m.gguf"
+  evaluation: "LFM2.5-1.2B-Instruct-Q8_0.gguf"
