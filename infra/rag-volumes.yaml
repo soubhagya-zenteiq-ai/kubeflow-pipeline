@@ -1,0 +1,56 @@
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: rag-data-pv
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: ""
+  hostPath:
+    path: /mnt/data
+  persistentVolumeReclaimPolicy: Retain
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: rag-data-pvc
+  namespace: kubeflow
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: ""
+  volumeName: rag-data-pv
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: rag-models-pv
+spec:
+  capacity:
+    storage: 20Gi
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: ""
+  hostPath:
+    path: /mnt/models
+  persistentVolumeReclaimPolicy: Retain
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: rag-models-pvc
+  namespace: kubeflow
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: ""
+  volumeName: rag-models-pv
+  resources:
+    requests:
+      storage: 20Gi

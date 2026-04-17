@@ -1,6 +1,7 @@
-# 🏗️ Deep-Dive: Scalable RAG Knowledge Factory
-
-This document explains the internal mechanics, data flow, and architectural decisions that make this RAG (Retrieval-Augmented Generation) ingestion engine "industrial-grade."
+- **[README.md](README.md)**: Main entry point & build guide.
+- **[INFRA.md](INFRA.md)**: Technical guides for Volumes, Mounts, and PVCs.
+- **[FIX.md](FIX.md)**: Historical troubleshooting and recovery playbook.
+- **[INFO.md](INFO.md)**: (You are here) Deep-dive into architecture, data flow, and design logic.
 
 > [!NOTE]
 > **The 100-Word Blueprint:**
@@ -75,7 +76,12 @@ In Kubernetes, pods are ephemeral (they die after the task). We solve data persi
 1.  **Persistent Volume Claims (PVC)**: 
     *   **`rag-data-pvc`**: Where your input PDFs and output CSVs live.
     *   **`rag-models-pvc`**: A massive read-only volume where the GGUF models are stored. This avoids downloading 5GB models every time a pod starts.
-2.  **KFP Artifacts**: Kubeflow tracks the *location* of the output files. When Component A finishes, it tells Component B: *"Here is the path to the CSV I just created."*
+    *   **Pro-Tip (KFP v2 Driver)**: Within a `ParallelFor` loop, the KFP v2 driver cannot resolve parent pipeline parameters for volume names. We use hardcoded string literals for PVC names to ensure child DAGs can mount local hostpaths reliably.
+
+2.  **KFP Artifacts (SeaweedFS)**: 
+    *   Kubeflow tracks output files via S3-compatible storage (SeaweedFS). 
+    *   We utilize **Port 9000** for the artifact repository to match the internal Minio/S3 standard, mapped to SeaweedFS's internal port 8333.
+    *   When Component A finishes, it tells Component B: *"Here is the path to the CSV I just created."*
 
 ---
 

@@ -1,6 +1,6 @@
 # PIPELINE DEFINITION
 # Name: scalable-rag-knowledge-factory
-# Description: A parallel pipeline for processing PDFs into vectors using Qwen and LFM models.
+# Description: Parallel pipeline for processing PDFs into embeddings + evaluation.
 # Inputs:
 #    batch_list: list [Default: ['batch_1', 'batch_2']]
 #    data_pvc: str [Default: 'rag-data-pvc']
@@ -163,8 +163,7 @@ deploymentSpec:
         - main.py
         image: localhost:5000/rag-ingestion:latest
 pipelineInfo:
-  description: A parallel pipeline for processing PDFs into vectors using Qwen and
-    LFM models.
+  description: Parallel pipeline for processing PDFs into embeddings + evaluation.
   name: scalable-rag-knowledge-factory
 root:
   dag:
@@ -213,6 +212,9 @@ platforms:
             pvcNameParameter:
               runtimeValue:
                 constant: rag-models-pvc
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: '1000'
         exec-evaluation-op:
           imagePullPolicy: IfNotPresent
           pvcMount:
@@ -221,6 +223,9 @@ platforms:
             pvcNameParameter:
               runtimeValue:
                 constant: rag-models-pvc
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: '1000'
         exec-ingestion-op:
           imagePullPolicy: IfNotPresent
           pvcMount:
@@ -229,3 +234,6 @@ platforms:
             pvcNameParameter:
               runtimeValue:
                 constant: rag-data-pvc
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: '1000'
