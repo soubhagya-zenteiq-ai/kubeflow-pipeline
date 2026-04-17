@@ -1,10 +1,13 @@
 import pandas as pd
-import requests
 import argparse
 import os
 import json
+from llama_cpp import Llama
 
-def evaluate_chunks(input_csv, output_report, llm_endpoint):
+def evaluate_chunks(input_csv, output_report, model_path):
+    print(f"🧠 Loading Evaluation Judge model from {model_path}...")
+    llm = Llama(model_path=model_path, verbose=False)
+    
     df = pd.read_csv(input_csv)
     
     # We sample the data to save time/compute during evaluation
@@ -14,36 +17,31 @@ def evaluate_chunks(input_csv, output_report, llm_endpoint):
     print(f"🧐 Starting Quality Evaluation on {len(sample_df)} samples...")
 
     for _, row in sample_df.iterrows():
-        context = row['content'][:500] # Send first 500 chars for context
+        context = str(row['content'])[:500] # Send first 500 chars for context
         
-        prompt = f"""
-        System: You are a Data Quality Auditor.
-        Task: Grade the following extracted text from a PDF. 
-        Criteria: Is it readable? Is it actual information or just noise/headers?
-        Text: {context}
-        
-        Respond ONLY in JSON format: {{"score": 1-10, "reason": "short explanation"}}
-        """
+        prompt = f"""<|im_start|>system
+You are a Data Quality Auditor. Grade the following text from a PDF. Is it actual information or just noise?
+Respond ONLY in JSON: {{"score": 1-10, "reason": "why"}}<|im_end|>
+<|im_start|>user
+Text: {context}<|im_end|>
+<|im_start|>assistant
+"""
 
         try:
-            # Calling a local LLM API (like Ollama running on your Ubuntu)
-            response = requests.post(
-                llm_endpoint,
-                json={
-                    "model": "llama3", # or qwen
-                    "prompt": prompt,
-                    "stream": False
-                }
-            )
-            grade = response.json().get('response', '{}')
-            results.append(grade)
+            output = llm(prompt, max_tokens=100, stop=["<|im_end|>"])
+            text_response = output['choices'][0]['text']
+            results.append({
+                "source": row['source_file'],
+                "eval": text_response
+            })
+            print(f"✅ Evaluated: {row['source_file']}")
         except Exception as e:
             print(f"⚠️ Eval failed for a row: {e}")
-            results.append("Error")
+            results.append({"error": str(e)})
 
     # Save the evaluation report
     with open(output_report, 'w') as f:
-        json.dump(results, f)
+        json.dump(results, f, indent=2)
     
     print(f"✅ Evaluation Report saved to {output_report}")
 
@@ -51,7 +49,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--input_csv", type=str, required=True)
     parser.add_argument("--output_report", type=str, required=True)
-    parser.add_argument("--llm_endpoint", type=str, default="http://localhost:11434/api/generate")
+    parser.add_argument("--model_path", type=str, required=True)
     
     args = parser.parse_args()
-    evaluate_chunks(args.input_csv, args.output_report, args.llm_endpoint)
+    evaluate_chunks(args.input_csv, args.output_report, args.model_path)
